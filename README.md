@@ -40,7 +40,7 @@ It’s Sans-I/O friendly — meaning it’s easy to integrate into network proto
 
 ```toml
 [dependencies]
-buffo = "0.8"
+buffo = "0.9"
 ```
 
 ### Feature Flags
@@ -50,7 +50,13 @@ buffo = "0.8"
 | `std`     | Yes      | Enables `std` integration                   |
 | `alloc`   | No       | Enables heap-allocated buffer support       |
 | `bytes_1` | No       | Enable integration with `bytes` 1.x         |
-| `smol_bytes_01` | No | Enable integration with [`smol-bytes`](https://crates.io/crates/smol-bytes) |
+| `smol_bytes_01` | No | Enable integration with `smol-bytes` 0.1.x |
+| `smol_bytes_02` | No | Enable integration with `smol-bytes` 0.2.x |
+
+`smol_bytes_01` and `smol_bytes_02` can be enabled together. The existing
+`to_smol_bytes` / `to_smol_bytes_mut` conversions return the 0.1 types, while
+the version-qualified `to_smol_bytes_02` / `to_smol_bytes_mut_02` conversions
+return the 0.2 types. buffo 0.9 requires Rust 1.95 or newer.
 
 ## Alternatives
 
