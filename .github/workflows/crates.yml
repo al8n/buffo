@@ -1,0 +1,67 @@
+name: Crates.io
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify crate release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Verify release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF_TYPE" != "tag" ]]; then
+            echo "Not a tag run; skipping tag/version comparison."
+            exit 0
+          fi
+
+          package_version="$(
+            cargo metadata --no-deps --format-version 1 |
+              python3 -c 'import json, sys; packages = [p for p in json.load(sys.stdin)["packages"] if p["name"] == "buffo"]; assert len(packages) == 1; print(packages[0]["version"])'
+          )"
+          expected_tag="v${package_version}"
+
+          if [[ "$GITHUB_REF_NAME" != "$expected_tag" ]]; then
+            printf 'release tag %s does not match Cargo package version %s (expected %s)\n' \
+              "$GITHUB_REF_NAME" "$package_version" "$expected_tag" >&2
+            exit 1
+          fi
+      - name: Run prepublish checks
+        run: |
+          cargo test --all-features
+          cargo package
+          cargo publish --dry-run
+
+  publish:
+    name: Publish crate
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Authenticate with crates.io
+        id: crates-io-auth
+        uses: rust-lang/crates-io-auth-action@v1
+      - name: Publish buffo
+        run: cargo publish --no-verify
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-io-auth.outputs.token }}
