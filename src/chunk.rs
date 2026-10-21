@@ -1807,6 +1807,33 @@ pub trait Chunk {
   fn to_smol_bytes_mut(&self) -> ::smol_bytes_01::BytesMut {
     ::smol_bytes_01::BytesMut::from(self.to_smol_bytes())
   }
+
+  /// Converts the read buffer to a smol-bytes 0.2 [`Bytes`](::smol_bytes_02::Bytes) instance.
+  ///
+  /// Creates a new `Bytes` instance containing a copy of all available bytes in the buffer.
+  /// The original buffer remains unchanged.
+  #[cfg(all(feature = "smol_bytes_02", any(feature = "std", feature = "alloc")))]
+  #[cfg_attr(
+    docsrs,
+    doc(cfg(all(feature = "smol_bytes_02", any(feature = "std", feature = "alloc"))))
+  )]
+  fn to_smol_bytes_02(&self) -> ::smol_bytes_02::Bytes {
+    ::smol_bytes_02::Bytes::copy_from_slice(self.buffer())
+  }
+
+  /// Converts the read buffer to a smol-bytes 0.2 [`BytesMut`](::smol_bytes_02::BytesMut) instance.
+  ///
+  /// Creates a new `BytesMut` instance containing a copy of all available bytes in the buffer.
+  /// The original buffer remains unchanged.
+  #[cfg(all(feature = "smol_bytes_02", any(feature = "std", feature = "alloc")))]
+  #[cfg_attr(
+    docsrs,
+    doc(cfg(all(feature = "smol_bytes_02", any(feature = "std", feature = "alloc"))))
+  )]
+  #[allow(clippy::wrong_self_convention)]
+  fn to_smol_bytes_mut_02(&self) -> ::smol_bytes_02::BytesMut {
+    ::smol_bytes_02::BytesMut::from(self.to_smol_bytes_02())
+  }
 }
 
 /// Extension trait for `Chunk` that provides additional methods
@@ -2882,6 +2909,424 @@ const _: () = {
     fn split_to(&mut self, at: usize) -> Self {
       Buffer::split_to(self, at)
     }
+  }
+};
+
+// smol-bytes 0.2: the heap-capable byte holders (`shared::Bytes`, `compact::Bytes`,
+// `BytesMut`). These only exist in smol's `std`/`alloc` tiers, and under those tiers smol
+// re-exports `bytes::Buf`, so the read specializations route through `smol_bytes_02::Buf`
+// (not buffo's optional `bytes_1`, which may be disabled here).
+#[cfg(all(feature = "smol_bytes_02", any(feature = "std", feature = "alloc")))]
+const _: () = {
+  use smol_bytes_02::{compact, Buf as _, Bytes, BytesMut};
+
+  macro_rules! read_fixed_specification {
+    ($($ty:ident), +$(,)?) => {
+      paste::paste! {
+        $(
+          fn [<read_ $ty _le>](&mut self) -> $ty {
+            self.[<get_ $ty _le>]()
+          }
+
+          fn [<read_ $ty _le_checked>](&mut self) -> Option<$ty> {
+            self.[<try_get_ $ty _le>]().ok()
+          }
+
+          fn [<try_read_ $ty _le>](&mut self) -> Result<$ty, TryReadError> {
+            self.[<try_get_ $ty _le>]().map_err(Into::into)
+          }
+
+          fn [<read_ $ty _be>](&mut self) -> $ty {
+            self.[<get_ $ty>]()
+          }
+
+          fn [<read_ $ty _be_checked>](&mut self) -> Option<$ty> {
+            self.[<try_get_ $ty>]().ok()
+          }
+
+          fn [<try_read_ $ty _be>](&mut self) -> Result<$ty, TryReadError> {
+            self.[<try_get_ $ty>]().map_err(Into::into)
+          }
+
+          fn [<read_ $ty _ne>](&mut self) -> $ty {
+            self.[<get_ $ty _ne>]()
+          }
+
+          fn [<read_ $ty _ne_checked>](&mut self) -> Option<$ty> {
+            self.[<try_get_ $ty _ne>]().ok()
+          }
+
+          fn [<try_read_ $ty _ne>](&mut self) -> Result<$ty, TryReadError> {
+            self.[<try_get_ $ty _ne>]().map_err(Into::into)
+          }
+        )*
+      }
+    };
+  }
+
+  macro_rules! smol_immutable_chunk {
+    ($ty:ty, { $($extra:tt)* }) => {
+      #[cfg_attr(
+        docsrs,
+        doc(cfg(all(feature = "smol_bytes_02", any(feature = "std", feature = "alloc"))))
+      )]
+      impl Chunk for $ty {
+        #[inline]
+        fn remaining(&self) -> usize {
+          <$ty>::len(self)
+        }
+
+        #[inline]
+        fn has_remaining(&self) -> bool {
+          !<$ty>::is_empty(self)
+        }
+
+        #[inline]
+        fn buffer(&self) -> &[u8] {
+          <$ty>::as_slice(self)
+        }
+
+        #[inline]
+        fn advance(&mut self, cnt: usize) {
+          smol_bytes_02::Buf::advance(self, cnt);
+        }
+
+        #[inline]
+        fn truncate(&mut self, len: usize) {
+          <$ty>::truncate(self, len);
+        }
+
+        #[inline]
+        fn segment(&self, range: impl RangeBounds<usize>) -> Self {
+          <$ty>::slice(self, range)
+        }
+
+        #[inline]
+        fn split_off(&mut self, at: usize) -> Self {
+          <$ty>::split_off(self, at)
+        }
+
+        #[inline]
+        fn split_to(&mut self, at: usize) -> Self {
+          <$ty>::split_to(self, at)
+        }
+
+        #[inline]
+        fn read_u8(&mut self) -> u8 {
+          self.get_u8()
+        }
+
+        #[inline]
+        fn read_u8_checked(&mut self) -> Option<u8> {
+          self.try_get_u8().ok()
+        }
+
+        #[inline]
+        fn try_read_u8(&mut self) -> Result<u8, TryReadError> {
+          self.try_get_u8().map_err(Into::into)
+        }
+
+        #[inline]
+        fn read_i8(&mut self) -> i8 {
+          self.get_i8()
+        }
+
+        #[inline]
+        fn read_i8_checked(&mut self) -> Option<i8> {
+          self.try_get_i8().ok()
+        }
+
+        #[inline]
+        fn try_read_i8(&mut self) -> Result<i8, TryReadError> {
+          self.try_get_i8().map_err(Into::into)
+        }
+
+        #[cfg(all(feature = "bytes_1", any(feature = "std", feature = "alloc")))]
+        fn to_bytes(&self) -> ::bytes_1::Bytes {
+          self.clone().into_bytes()
+        }
+
+        $($extra)*
+
+        read_fixed_specification!(u16, u32, u64, u128, i16, i32, i64, i128, f32, f64);
+      }
+    };
+  }
+
+  #[cfg_attr(
+    docsrs,
+    doc(cfg(all(feature = "smol_bytes_02", any(feature = "std", feature = "alloc"))))
+  )]
+  impl EmptyChunk for Bytes {
+    #[inline]
+    fn empty() -> Self
+    where
+      Self: Sized,
+    {
+      Bytes::new()
+    }
+  }
+
+  #[cfg_attr(
+    docsrs,
+    doc(cfg(all(feature = "smol_bytes_02", any(feature = "std", feature = "alloc"))))
+  )]
+  impl EmptyChunk for compact::Bytes {
+    #[inline]
+    fn empty() -> Self
+    where
+      Self: Sized,
+    {
+      compact::Bytes::new()
+    }
+  }
+
+  // `shared::Bytes` is itself the 0.2 `Bytes` result type, so conversion is a cheap clone.
+  // `compact::Bytes` retains the default copy into the shared holder.
+  smol_immutable_chunk!(Bytes, {
+    #[inline]
+    fn to_smol_bytes_02(&self) -> ::smol_bytes_02::Bytes {
+      self.clone()
+    }
+  });
+  smol_immutable_chunk!(compact::Bytes, {});
+
+  #[cfg_attr(
+    docsrs,
+    doc(cfg(all(feature = "smol_bytes_02", any(feature = "std", feature = "alloc"))))
+  )]
+  impl EmptyChunk for BytesMut {
+    #[inline]
+    fn empty() -> Self
+    where
+      Self: Sized,
+    {
+      BytesMut::new()
+    }
+  }
+
+  #[cfg_attr(
+    docsrs,
+    doc(cfg(all(feature = "smol_bytes_02", any(feature = "std", feature = "alloc"))))
+  )]
+  impl Chunk for BytesMut {
+    #[inline]
+    fn remaining(&self) -> usize {
+      BytesMut::len(self)
+    }
+
+    #[inline]
+    fn has_remaining(&self) -> bool {
+      !BytesMut::is_empty(self)
+    }
+
+    #[inline]
+    fn buffer(&self) -> &[u8] {
+      BytesMut::as_slice(self)
+    }
+
+    #[inline]
+    fn advance(&mut self, cnt: usize) {
+      smol_bytes_02::Buf::advance(self, cnt);
+    }
+
+    #[inline]
+    fn truncate(&mut self, len: usize) {
+      BytesMut::truncate(self, len);
+    }
+
+    // O(n) copy into an independent buffer, with bounds/panic behaviour delegated to the
+    // `&[u8]` impl so it panics iff the range exceeds `len`.
+    #[inline]
+    fn segment(&self, range: impl RangeBounds<usize>) -> Self {
+      let slice = BytesMut::as_slice(self);
+      BytesMut::from(<&[u8] as Chunk>::segment(&slice, range))
+    }
+
+    // smol's `BytesMut::split_off` panics only at `at > capacity`; the buffo contract is
+    // `at > len`. The pre-check restores that contract before using 0.2's direct `Self`
+    // return value for both inline and heap storage.
+    #[inline]
+    fn split_off(&mut self, at: usize) -> Self {
+      check_out_of_bounds("split_off", at, BytesMut::len(self));
+      BytesMut::split_off(self, at)
+    }
+
+    // smol's `BytesMut::split_to` already panics at `at > len`.
+    #[inline]
+    fn split_to(&mut self, at: usize) -> Self {
+      BytesMut::split_to(self, at)
+    }
+
+    #[inline]
+    fn read_u8(&mut self) -> u8 {
+      self.get_u8()
+    }
+
+    #[inline]
+    fn read_u8_checked(&mut self) -> Option<u8> {
+      self.try_get_u8().ok()
+    }
+
+    #[inline]
+    fn try_read_u8(&mut self) -> Result<u8, TryReadError> {
+      self.try_get_u8().map_err(Into::into)
+    }
+
+    #[inline]
+    fn read_i8(&mut self) -> i8 {
+      self.get_i8()
+    }
+
+    #[inline]
+    fn read_i8_checked(&mut self) -> Option<i8> {
+      self.try_get_i8().ok()
+    }
+
+    #[inline]
+    fn try_read_i8(&mut self) -> Result<i8, TryReadError> {
+      self.try_get_i8().map_err(Into::into)
+    }
+
+    read_fixed_specification!(u16, u32, u64, u128, i16, i32, i64, i128, f32, f64);
+  }
+};
+
+// smol-bytes 0.2: the pure-core `Buffer` is available in every supported tier. Its inherent
+// fixed-width reads avoid `bytes::Buf` entirely, so the error source remains the crate-owned
+// `smol_bytes_02::TryGetError` under core, alloc, and std alike.
+#[cfg(feature = "smol_bytes_02")]
+const _: () = {
+  use smol_bytes_02::Buffer;
+
+  macro_rules! read_fixed_specification {
+    ($($ty:ident), +$(,)?) => {
+      paste::paste! {
+        $(
+          fn [<read_ $ty _le>](&mut self) -> $ty {
+            Buffer::[<get_ $ty _le>](self)
+          }
+
+          fn [<read_ $ty _le_checked>](&mut self) -> Option<$ty> {
+            Buffer::[<try_get_ $ty _le>](self).ok()
+          }
+
+          fn [<try_read_ $ty _le>](&mut self) -> Result<$ty, TryReadError> {
+            Buffer::[<try_get_ $ty _le>](self).map_err(Into::into)
+          }
+
+          fn [<read_ $ty _be>](&mut self) -> $ty {
+            Buffer::[<get_ $ty>](self)
+          }
+
+          fn [<read_ $ty _be_checked>](&mut self) -> Option<$ty> {
+            Buffer::[<try_get_ $ty>](self).ok()
+          }
+
+          fn [<try_read_ $ty _be>](&mut self) -> Result<$ty, TryReadError> {
+            Buffer::[<try_get_ $ty>](self).map_err(Into::into)
+          }
+
+          fn [<read_ $ty _ne>](&mut self) -> $ty {
+            Buffer::[<get_ $ty _ne>](self)
+          }
+
+          fn [<read_ $ty _ne_checked>](&mut self) -> Option<$ty> {
+            Buffer::[<try_get_ $ty _ne>](self).ok()
+          }
+
+          fn [<try_read_ $ty _ne>](&mut self) -> Result<$ty, TryReadError> {
+            Buffer::[<try_get_ $ty _ne>](self).map_err(Into::into)
+          }
+        )*
+      }
+    };
+  }
+
+  #[cfg_attr(docsrs, doc(cfg(feature = "smol_bytes_02")))]
+  impl EmptyChunk for Buffer {
+    #[inline]
+    fn empty() -> Self
+    where
+      Self: Sized,
+    {
+      Buffer::new()
+    }
+  }
+
+  #[cfg_attr(docsrs, doc(cfg(feature = "smol_bytes_02")))]
+  impl Chunk for Buffer {
+    #[inline]
+    fn remaining(&self) -> usize {
+      Buffer::remaining(self)
+    }
+
+    #[inline]
+    fn has_remaining(&self) -> bool {
+      !Buffer::is_empty(self)
+    }
+
+    #[inline]
+    fn buffer(&self) -> &[u8] {
+      Buffer::as_slice(self)
+    }
+
+    #[inline]
+    fn advance(&mut self, cnt: usize) {
+      Buffer::advance(self, cnt);
+    }
+
+    #[inline]
+    fn truncate(&mut self, len: usize) {
+      Buffer::truncate(self, len);
+    }
+
+    #[inline]
+    fn segment(&self, range: impl RangeBounds<usize>) -> Self {
+      Buffer::slice(self, range)
+    }
+
+    #[inline]
+    fn split_off(&mut self, at: usize) -> Self {
+      Buffer::split_off(self, at)
+    }
+
+    #[inline]
+    fn split_to(&mut self, at: usize) -> Self {
+      Buffer::split_to(self, at)
+    }
+
+    #[inline]
+    fn read_u8(&mut self) -> u8 {
+      Buffer::get_u8(self)
+    }
+
+    #[inline]
+    fn read_u8_checked(&mut self) -> Option<u8> {
+      Buffer::try_get_u8(self).ok()
+    }
+
+    #[inline]
+    fn try_read_u8(&mut self) -> Result<u8, TryReadError> {
+      Buffer::try_get_u8(self).map_err(Into::into)
+    }
+
+    #[inline]
+    fn read_i8(&mut self) -> i8 {
+      Buffer::get_i8(self)
+    }
+
+    #[inline]
+    fn read_i8_checked(&mut self) -> Option<i8> {
+      Buffer::try_get_i8(self).ok()
+    }
+
+    #[inline]
+    fn try_read_i8(&mut self) -> Result<i8, TryReadError> {
+      Buffer::try_get_i8(self).map_err(Into::into)
+    }
+
+    read_fixed_specification!(u16, u32, u64, u128, i16, i32, i64, i128, f32, f64);
   }
 };
 

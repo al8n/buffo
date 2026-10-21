@@ -760,16 +760,16 @@ impl From<DecodeVarintAtError> for std::io::Error {
   }
 }
 
-// Normalizes a `(requested, available)` pair taken from `bytes::TryGetError` (and, via the
-// same nominal type under smol-bytes' std/alloc tiers, `smol_bytes::TryGetError`) so that it
-// always satisfies the `requested >= 1` and `requested > available` invariants of these error
-// types. These source error types expose public `requested`/`available` fields, so any pair
-// (including `requested == 0` or `requested <= available`) is constructible; degenerate pairs
-// are normalized here rather than panicked on, while valid non-degenerate inputs are preserved
-// verbatim.
+// Normalizes a `(requested, available)` pair taken from a bytes-compatible `TryGetError` or
+// smol-bytes 0.2's core `TryGetError` so that it always satisfies the `requested >= 1` and
+// `requested > available` invariants of these error types. These source error types expose
+// public `requested`/`available` fields, so any pair (including `requested == 0` or
+// `requested <= available`) is constructible; degenerate pairs are normalized here rather than
+// panicked on, while valid non-degenerate inputs are preserved verbatim.
 #[cfg(any(
   feature = "bytes_1",
-  all(feature = "smol_bytes_01", any(feature = "std", feature = "alloc"))
+  all(feature = "smol_bytes_01", any(feature = "std", feature = "alloc")),
+  feature = "smol_bytes_02"
 ))]
 #[inline]
 fn normalize(requested: usize, available: usize) -> (NonZeroUsize, usize) {
@@ -786,23 +786,52 @@ fn normalize(requested: usize, available: usize) -> (NonZeroUsize, usize) {
   }
 }
 
-// `bytes::TryGetError` and `smol_bytes::TryGetError` are the SAME nominal type whenever
-// smol-bytes is built with `std`/`alloc` (smol re-exports `bytes::TryGetError`), so a single
-// `From<TryGetError>` impl must cover both. Writing a separate
-// `From<smol_bytes_01::TryGetError>` would be a duplicate impl (E0119) when both features are
-// enabled. The cfg-selected `use` below picks whichever name is in scope. In pure-core smol
-// (no std/alloc) no `TryGetError` conversion exists at all — buffo's pure-core
-// `Chunk for Buffer` impl keeps the trait read defaults and never produces one, and smol's
-// pure-core `TryGetError` identity is not knowable here.
+// `bytes::TryGetError`, smol-bytes 0.1's heap `TryGetError`, and smol-bytes 0.2's heap
+// `BufTryGetError` are the SAME nominal type whenever their heap tier is enabled. A single
+// `From<TryGetError>` impl must cover that family, so the cfg-selected `use` below picks one
+// source name in priority order and avoids duplicate alias impls.
 #[cfg(any(
   feature = "bytes_1",
-  all(feature = "smol_bytes_01", any(feature = "std", feature = "alloc"))
+  all(feature = "smol_bytes_01", any(feature = "std", feature = "alloc")),
+  all(feature = "smol_bytes_02", any(feature = "std", feature = "alloc"))
 ))]
 const _: () = {
   #[cfg(feature = "bytes_1")]
   use bytes_1::TryGetError;
-  #[cfg(all(not(feature = "bytes_1"), feature = "smol_bytes_01"))]
+  #[cfg(all(
+    not(feature = "bytes_1"),
+    feature = "smol_bytes_01",
+    any(feature = "std", feature = "alloc")
+  ))]
   use smol_bytes_01::TryGetError;
+  #[cfg(all(
+    not(feature = "bytes_1"),
+    not(all(feature = "smol_bytes_01", any(feature = "std", feature = "alloc"))),
+    feature = "smol_bytes_02",
+    any(feature = "std", feature = "alloc")
+  ))]
+  use smol_bytes_02::BufTryGetError as TryGetError;
+
+  impl From<TryGetError> for TryAdvanceError {
+    fn from(e: TryGetError) -> Self {
+      let (requested, available) = normalize(e.requested, e.available);
+      TryAdvanceError::new(requested, available)
+    }
+  }
+
+  impl From<TryGetError> for TryReadError {
+    fn from(e: TryGetError) -> Self {
+      let (requested, available) = normalize(e.requested, e.available);
+      TryReadError::new(requested, available)
+    }
+  }
+};
+
+// smol-bytes 0.2's core `Buffer` has a distinct crate-owned `TryGetError`, unlike its heap
+// `BufTryGetError` alias above. It is available in core, alloc, and std tiers.
+#[cfg(feature = "smol_bytes_02")]
+const _: () = {
+  use smol_bytes_02::TryGetError;
 
   impl From<TryGetError> for TryAdvanceError {
     fn from(e: TryGetError) -> Self {
@@ -969,6 +998,70 @@ mod tests {
         assert!(read.requested().get() > read.available());
 
         // Field preservation on valid, non-degenerate inputs.
+        if requested >= 1 && requested > available {
+          assert_eq!(advance.requested().get(), requested);
+          assert_eq!(advance.available(), available);
+          assert_eq!(read.requested().get(), requested);
+          assert_eq!(read.available(), available);
+        }
+      }
+    }
+  }
+
+  #[cfg(feature = "smol_bytes_02")]
+  #[test]
+  fn smol_bytes_02_core_try_get_error_conversions_are_total() {
+    use smol_bytes_02::TryGetError;
+
+    let vals = [0usize, 1, 5, usize::MAX];
+    for &requested in &vals {
+      for &available in &vals {
+        let advance: TryAdvanceError = TryGetError {
+          requested,
+          available,
+        }
+        .into();
+        let read: TryReadError = TryGetError {
+          requested,
+          available,
+        }
+        .into();
+
+        assert!(advance.requested().get() > advance.available());
+        assert!(read.requested().get() > read.available());
+
+        if requested >= 1 && requested > available {
+          assert_eq!(advance.requested().get(), requested);
+          assert_eq!(advance.available(), available);
+          assert_eq!(read.requested().get(), requested);
+          assert_eq!(read.available(), available);
+        }
+      }
+    }
+  }
+
+  #[cfg(all(feature = "smol_bytes_02", any(feature = "std", feature = "alloc")))]
+  #[test]
+  fn smol_bytes_02_buf_try_get_error_conversions_are_total() {
+    use smol_bytes_02::BufTryGetError;
+
+    let vals = [0usize, 1, 5, usize::MAX];
+    for &requested in &vals {
+      for &available in &vals {
+        let advance: TryAdvanceError = BufTryGetError {
+          requested,
+          available,
+        }
+        .into();
+        let read: TryReadError = BufTryGetError {
+          requested,
+          available,
+        }
+        .into();
+
+        assert!(advance.requested().get() > advance.available());
+        assert!(read.requested().get() > read.available());
+
         if requested >= 1 && requested > available {
           assert_eq!(advance.requested().get(), requested);
           assert_eq!(advance.available(), available);

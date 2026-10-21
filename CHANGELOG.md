@@ -1,3 +1,19 @@
+# UNRELEASED
+
+## 0.9.0
+
+### Added
+
+- Parallel optional `smol_bytes_02` support for `smol-bytes` 0.2, including
+  `Chunk`/`EmptyChunk` implementations for its shared, compact, mutable, and
+  core `Buffer` holders.
+- Version-qualified `to_smol_bytes_02` and `to_smol_bytes_mut_02` conversions,
+  so the 0.1 and 0.2 integrations can be enabled together without ambiguity.
+
+### Changed
+
+- Raised the MSRV to Rust 1.95 for `smol-bytes` 0.2 support.
+
 # RELEASED
 
 ## 0.8.0 (Jul 17th, 2026)
