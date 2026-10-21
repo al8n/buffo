@@ -13,6 +13,8 @@
 ### Changed
 
 - Raised the MSRV to Rust 1.95 for `smol-bytes` 0.2 support.
+- Added tag-gated crates.io publishing through GitHub OIDC with a protected
+  environment and short-lived credentials.
 
 # RELEASED
 
