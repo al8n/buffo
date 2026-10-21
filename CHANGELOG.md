@@ -1,6 +1,8 @@
 # UNRELEASED
 
-## 0.9.0
+# RELEASED
+
+## 0.9.0 (Oct 21st, 2026)
 
 ### Added
 
@@ -15,8 +17,6 @@
 - Raised the MSRV to Rust 1.95 for `smol-bytes` 0.2 support.
 - Added tag-gated crates.io publishing through GitHub OIDC with a protected
   environment and short-lived credentials.
-
-# RELEASED
 
 ## 0.8.0 (Jul 17th, 2026)
 
