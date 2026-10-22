@@ -52,7 +52,7 @@ jobs:
     steps:
     - uses: actions/checkout@v7
     - name: Install Rust 1.95.0
-      uses: dtolnay/rust-toolchain@1.95.0
+      uses: dtolnay/rust-toolchain@1.120.0
     - name: Check supported feature tiers
       run: |
         cargo check --all-features
